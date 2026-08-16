@@ -1,0 +1,110 @@
+//
+//  SteamLibraryTests.swift
+//  GVEngine
+//
+//  This file is part of GameVerse, a fork of Whisky
+//  (https://github.com/Whisky-App/Whisky) by Isaac Marovitz.
+//
+//  GameVerse is free software: you can redistribute it and/or modify it under the terms
+//  of the GNU General Public License as published by the Free Software Foundation,
+//  either version 3 of the License, or (at your option) any later version.
+//
+//  GameVerse is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+//  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+//  See the GNU General Public License for more details.
+//
+//  You should have received a copy of the GNU General Public License along with GameVerse.
+//  If not, see https://www.gnu.org/licenses/.
+//
+
+import XCTest
+@testable import GVEngine
+
+final class SteamLibraryTests: XCTestCase {
+    private func makeFixtureBottle() throws -> (Bottle, URL) {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString)
+        let steamRoot = dir
+            .appending(path: "drive_c")
+            .appending(path: "Program Files (x86)")
+            .appending(path: "Steam")
+        let steamApps = steamRoot.appending(path: "steamapps")
+        let common = steamApps.appending(path: "common").appending(path: "Team Fortress 2")
+        try FileManager.default.createDirectory(at: common, withIntermediateDirectories: true)
+
+        let libraryFolders = #"""
+        "libraryfolders"
+        {
+            "0"
+            {
+                "path"		"C:\\Program Files (x86)\\Steam"
+                "apps"
+                {
+                    "440"		"100000"
+                }
+            }
+        }
+        """#
+        try libraryFolders.write(
+            to: steamApps.appending(path: "libraryfolders.vdf"), atomically: true, encoding: .utf8
+        )
+
+        let appManifest = #"""
+        "AppState"
+        {
+            "appid"		"440"
+            "name"		"Team Fortress 2"
+            "installdir"		"Team Fortress 2"
+        }
+        """#
+        try appManifest.write(
+            to: steamApps.appending(path: "appmanifest_440.acf"), atomically: true, encoding: .utf8
+        )
+
+        let bottle = Bottle(bottleUrl: dir)
+        return (bottle, dir)
+    }
+
+    func testDiscoversGameFromAppManifest() throws {
+        let (bottle, dir) = try makeFixtureBottle()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let games = SteamLibrary.discoverGames(in: bottle)
+
+        XCTAssertEqual(games.count, 1)
+        XCTAssertEqual(games.first?.appId, 440)
+        XCTAssertEqual(games.first?.name, "Team Fortress 2")
+        XCTAssertTrue(games.first?.installDir.path(percentEncoded: false).hasSuffix(
+            "steamapps/common/Team Fortress 2"
+        ) ?? false)
+    }
+
+    func testReturnsEmptyWhenNoSteamInstalled() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let bottle = Bottle(bottleUrl: dir)
+        XCTAssertEqual(SteamLibrary.discoverGames(in: bottle), [])
+    }
+
+    func testResolvesCachedIconWhenPresent() throws {
+        let (bottle, dir) = try makeFixtureBottle()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let librarycache = dir
+            .appending(path: "drive_c")
+            .appending(path: "Program Files (x86)")
+            .appending(path: "Steam")
+            .appending(path: "appcache")
+            .appending(path: "librarycache")
+        try FileManager.default.createDirectory(at: librarycache, withIntermediateDirectories: true)
+        let iconFile = librarycache.appending(path: "440_icon.jpg")
+        try Data().write(to: iconFile)
+
+        let games = SteamLibrary.discoverGames(in: bottle)
+
+        XCTAssertEqual(games.first?.iconURL, iconFile)
+    }
+}
