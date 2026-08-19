@@ -25,7 +25,7 @@ final class SteamFixupTests: XCTestCase {
         // CEF software-compositing flags fix the black-screen UI…
         XCTAssertEqual(
             SteamFixup.launchArgsString,
-            "-cef-force-32bit -cef-disable-gpu-compositing -cef-disable-gpu"
+            "-cef-disable-gpu-compositing -cef-disable-gpu -cef-disable-sandbox -cef-enable-gl=swiftshader"
         )
         // …and NONE of the old update-blocking flags may reappear, or Steam can
         // wedge itself half-updated (32-bit steamui.dll under a 64-bit client).

@@ -19,32 +19,12 @@
 
 import Foundation
 
-/// Steam-on-Wine/Apple-Silicon fixes.
-///
-/// History: earlier versions rolled Steam back to an archived 2025-03-06 client
-/// and inhibited all self-updates (`steam.cfg` + `-skipinitialbootstrap` etc.).
-/// That was a workaround for a Steam startup failure whose real cause was Wine
-/// having no working TLS provider — the bundled runtime shipped an arm64
-/// `secur32.so`/`libgnutls` into an x86_64 (Rosetta) Wine. Once the x86_64
-/// GnuTLS stack is present in `Wine/lib` (see WineRuntimeInstaller), Steam's own
-/// current client runs. The rollback/inhibit approach was actively harmful: it
-/// froze Steam in a half-updated state (32-bit `steamui.dll` under a 64-bit
-/// client → `c000007b`), so it has been removed.
 public enum SteamFixup {
-    /// Launch args for normal Steam runs. The `-cef-*` flags force software
-    /// compositing for Steam's CEF UI — on Wine/Apple Silicon the GPU compositor
-    /// renders nothing, giving the classic black-screen login window. Crucially
-    /// there are NO update-blocking flags here: Steam must stay free to keep its
-    /// own client files consistent, or a partial update wedges it (see above).
     public static let launchArgs = [
-        "-cef-force-32bit",
         "-cef-disable-gpu-compositing",
         "-cef-disable-gpu",
-        // Run CEF in a single process. The multi-process webHelper crashes under
-        // Wine/GPTK with a nested exception on the signal stack (steamwebhelper
-        // renderer faults, Wine re-faults delivering the exception), killing the
-        // helper and taking steam.exe down with status=100.
-        "-cef-single-process"
+        "-cef-disable-sandbox",
+        "-cef-enable-gl=swiftshader"
     ]
 
     public static var launchArgsString: String {
@@ -61,17 +41,10 @@ public enum SteamFixup {
         case shimResourceMissing(arch: String)
     }
 
-    /// Bring a Steam install back to a launchable state:
-    /// 1. ensure the x86_64 runtime libs Wine dlopen()s (GnuTLS for login,
-    ///    MoltenVK for games) are present in `Wine/lib`, and
-    /// 2. remove anything that would stop Steam updating itself to a consistent
-    ///    client — the old `steam.cfg` update inhibitor, `uchg` file locks, and
-    ///    any leftover webhelper shim.
-    ///
-    /// After this, launching Steam (with `launchArgs`) lets it self-heal.
     public static func repair(steamRoot: URL) throws {
         try WineRuntimeInstaller.installRuntimeLibraries()
         removeUpdateInhibitors(steamRoot: steamRoot)
+        try? installWebHelperShim(steamRoot: steamRoot)
     }
 
     private static func removeUpdateInhibitors(steamRoot: URL) {
@@ -81,9 +54,6 @@ public enum SteamFixup {
         let cfg = steamRoot.appending(path: "steam.cfg")
         try? fileManager.removeItem(at: cfg)
 
-        // Clear uchg locks and restore the genuine webhelper over any shim, so
-        // Steam's updater can rename/replace those files instead of failing with
-        // error 5 and reverting the whole update.
         let cefBase = steamRoot.appending(path: "bin").appending(path: "cef")
         for target in webHelperTargets {
             let dir = cefBase.appending(path: target.cefDir)
@@ -96,6 +66,52 @@ public enum SteamFixup {
                 try? fileManager.moveItem(at: realBackup, to: helper)
             }
         }
+
+        // Remove stale 32-bit package markers and mismatched DLLs that cause
+        // c000007b (STATUS_INVALID_IMAGE_FORMAT) stack overflow crashes when
+        // 64-bit Steam attempts to initialize after a UI update.
+        let packageDir = steamRoot.appending(path: "package")
+        try? fileManager.removeItem(at: packageDir.appending(path: "steam_client_win32.installed"))
+        try? fileManager.removeItem(at: packageDir.appending(path: "steam_client_win32.manifest"))
+        let crashMarker = steamRoot.appending(path: ".crash")
+        try? fileManager.removeItem(at: crashMarker)
+
+        // Clear corrupt CEF htmlcache in user AppData/Local/Steam/htmlcache so Steam
+        // UI renders fresh HTML components instead of loading cached broken state.
+        let bottleDriveC = steamRoot.deletingLastPathComponent().deletingLastPathComponent()
+        let appDataLocalSteam = bottleDriveC
+            .appending(path: "users")
+            .appending(path: NSUserName())
+            .appending(path: "AppData")
+            .appending(path: "Local")
+            .appending(path: "Steam")
+            .appending(path: "htmlcache")
+        try? fileManager.removeItem(at: appDataLocalSteam)
+
+        ensureSteamLoopbackHosts(bottleDriveC: bottleDriveC)
+    }
+
+    /// Map steamloopback.host to 127.0.0.1 in Wine's Windows drivers/etc/hosts file so Steam CEF UI
+    /// can resolve its local WebSocket IPC bridge without failing WSALookupService DNS resolution.
+    private static func ensureSteamLoopbackHosts(bottleDriveC: URL) {
+        let hostsFile = bottleDriveC
+            .appending(path: "windows")
+            .appending(path: "system32")
+            .appending(path: "drivers")
+            .appending(path: "etc")
+            .appending(path: "hosts")
+
+        let entry = "\n127.0.0.1 steamloopback.host\n::1 steamloopback.host\n"
+        if let existing = try? String(contentsOf: hostsFile, encoding: .utf8) {
+            if !existing.contains("steamloopback.host") {
+                let updated = existing + entry
+                try? updated.write(to: hostsFile, atomically: true, encoding: .utf8)
+            }
+        } else {
+            let content = "127.0.0.1 localhost\n::1 localhost\n" + entry
+            try? FileManager.default.createDirectory(at: hostsFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? content.write(to: hostsFile, atomically: true, encoding: .utf8)
+        }
     }
 
     // MARK: - CEF webhelper shim (optional black-screen fix)
@@ -107,16 +123,6 @@ public enum SteamFixup {
         ("cef.win7", "steamwebhelper_x86")
     ]
 
-    /// Replace every present `steamwebhelper.exe` under `<steamRoot>/bin/cef`
-    /// with the GameVerse shim (backing up the genuine helper as
-    /// `steamwebhelper_real.exe`). The shim injects `--single-process`, which
-    /// Steam's own launch args can't express, for cases where `-cef-disable-gpu`
-    /// alone doesn't clear the CEF UI black screen. Optional — call only if the
-    /// UI is still black after `repair` + `launchArgs`. Idempotent.
-    ///
-    /// NOTE: does not lock the file. A locked webhelper breaks Steam's updater
-    /// (see repair); letting an update overwrite the shim is acceptable and
-    /// self-healing — re-run this afterwards if needed.
     public static func installWebHelperShim(steamRoot: URL) throws {
         let cefBase = steamRoot.appending(path: "bin").appending(path: "cef")
         for target in webHelperTargets {

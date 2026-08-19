@@ -130,7 +130,7 @@ public enum DXVKHUD: Codable, Equatable {
 }
 
 public struct BottleDXVKConfig: Codable, Equatable {
-    var dxvk: Bool = false
+    var dxvk: Bool = true
     var dxvkAsync: Bool = true
     var dxvkHud: DXVKHUD = .off
 
@@ -138,7 +138,7 @@ public struct BottleDXVKConfig: Codable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.dxvk = try container.decodeIfPresent(Bool.self, forKey: .dxvk) ?? false
+        self.dxvk = try container.decodeIfPresent(Bool.self, forKey: .dxvk) ?? true
         self.dxvkAsync = try container.decodeIfPresent(Bool.self, forKey: .dxvkAsync) ?? true
         self.dxvkHud = try container.decodeIfPresent(DXVKHUD.self, forKey: .dxvkHud) ?? .off
     }
@@ -279,13 +279,15 @@ public struct BottleSettings: Codable, Equatable {
 
     // swiftlint:disable:next cyclomatic_complexity
     public func environmentVariables(wineEnv: inout [String: String]) {
-        // Disables mscoree.dll (the .NET/Mono bridge) unconditionally: without this, any
-        // program touching DirectShow/COM triggers Wine's "Install Mono?" dialog, which
-        // hangs indefinitely with no window to click since there's nothing showing it.
-        wineEnv.updateValue("mscoree=", forKey: "WINEDLLOVERRIDES")
-
+        // Disables mscoree.dll (the .NET/Mono bridge) unconditionally, as well as 32-bit
+        // steamservice.dll / SteamService.dll to prevent 64-bit Steam from entering a c000007b
+        // exception stack overflow loop when initializing services under Wine.
+        var dllOverrides = ["mscoree=", "steamservice=d", "SteamService=d"]
         if dxvk {
-            wineEnv.updateValue("mscoree=;dxgi,d3d9,d3d10core,d3d11=n,b", forKey: "WINEDLLOVERRIDES")
+            dllOverrides.append("dxgi,d3d9,d3d10core,d3d11=n,b")
+        }
+        wineEnv.updateValue(dllOverrides.joined(separator: ";"), forKey: "WINEDLLOVERRIDES")
+        if dxvk {
             switch dxvkHud {
             case .full:
                 wineEnv.updateValue("full", forKey: "DXVK_HUD")
