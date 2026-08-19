@@ -21,15 +21,12 @@ import XCTest
 @testable import GVEngine
 
 final class SteamFixupTests: XCTestCase {
-    func testLaunchArgsForceSoftwareCEFAndDoNotBlockUpdates() {
-        // CEF software-compositing flags fix the black-screen UI…
+    func testLaunchArgsKeepShimInstalledAndUseSupportedCEFOptions() {
         XCTAssertEqual(
             SteamFixup.launchArgsString,
-            "-cef-disable-gpu-compositing -cef-disable-gpu -cef-disable-sandbox -cef-enable-gl=swiftshader"
+            "-no-cef-sandbox -cef-disable-gpu -cef-single-process -noverifyfiles"
         )
-        // …and NONE of the old update-blocking flags may reappear, or Steam can
-        // wedge itself half-updated (32-bit steamui.dll under a 64-bit client).
-        for blocked in ["-noverifyfiles", "-nobootstrapupdate", "-skipinitialbootstrap", "-norepairfiles"] {
+        for blocked in ["-nobootstrapupdate", "-skipinitialbootstrap", "-norepairfiles"] {
             XCTAssertFalse(SteamFixup.launchArgs.contains(blocked), "\(blocked) must not be a launch arg")
         }
     }
@@ -53,5 +50,81 @@ final class SteamFixupTests: XCTestCase {
         try? SteamFixup.repair(steamRoot: dir)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: cfg.path(percentEncoded: false)))
+    }
+
+    func testRepairInstallsShimAndPreservesGenuineHelper() throws {
+        let steamRoot = try makeSteamRoot()
+        defer { removeTestPrefix(containing: steamRoot) }
+        let helper = webHelper(in: steamRoot)
+        let backup = helper.deletingLastPathComponent().appending(path: "steamwebhelper_real.exe")
+        let genuine = Data("valve-helper-v1".utf8)
+        try genuine.write(to: helper)
+
+        try SteamFixup.repair(steamRoot: steamRoot)
+
+        XCTAssertEqual(try Data(contentsOf: backup), genuine)
+        XCTAssertNotEqual(try Data(contentsOf: helper), genuine)
+    }
+
+    func testRepairIsIdempotentAndRefreshesBackupAfterSteamUpdate() throws {
+        let steamRoot = try makeSteamRoot()
+        defer { removeTestPrefix(containing: steamRoot) }
+        let helper = webHelper(in: steamRoot)
+        let backup = helper.deletingLastPathComponent().appending(path: "steamwebhelper_real.exe")
+        try Data("valve-helper-v1".utf8).write(to: helper)
+
+        try SteamFixup.repair(steamRoot: steamRoot)
+        let installedShim = try Data(contentsOf: helper)
+        try SteamFixup.repair(steamRoot: steamRoot)
+        XCTAssertEqual(try Data(contentsOf: helper), installedShim)
+        XCTAssertEqual(try Data(contentsOf: backup), Data("valve-helper-v1".utf8))
+
+        let updatedGenuine = Data("valve-helper-v2".utf8)
+        try updatedGenuine.write(to: helper)
+        try SteamFixup.repair(steamRoot: steamRoot)
+
+        XCTAssertEqual(try Data(contentsOf: helper), installedShim)
+        XCTAssertEqual(try Data(contentsOf: backup), updatedGenuine)
+    }
+
+    func testRepairClearsHTMLCacheForEveryWineUser() throws {
+        let steamRoot = try makeSteamRoot()
+        defer { removeTestPrefix(containing: steamRoot) }
+        let driveC = steamRoot.deletingLastPathComponent().deletingLastPathComponent()
+        for user in ["mac-user", "steamuser"] {
+            let cache = driveC
+                .appending(path: "users/\(user)/AppData/Local/Steam/htmlcache")
+            try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+            try Data("stale".utf8).write(to: cache.appending(path: "cache.bin"))
+        }
+
+        try SteamFixup.repair(steamRoot: steamRoot)
+
+        for user in ["mac-user", "steamuser"] {
+            let cache = driveC
+                .appending(path: "users/\(user)/AppData/Local/Steam/htmlcache")
+            XCTAssertFalse(FileManager.default.fileExists(atPath: cache.path(percentEncoded: false)))
+        }
+    }
+
+    private func makeSteamRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: UUID().uuidString)
+            .appending(path: "drive_c/Program Files (x86)/Steam")
+        let cef = root.appending(path: "bin/cef/cef.win64")
+        try FileManager.default.createDirectory(at: cef, withIntermediateDirectories: true)
+        return root
+    }
+
+    private func webHelper(in steamRoot: URL) -> URL {
+        steamRoot.appending(path: "bin/cef/cef.win64/steamwebhelper.exe")
+    }
+
+    private func removeTestPrefix(containing steamRoot: URL) {
+        let temporaryRoot = steamRoot
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        try? FileManager.default.removeItem(at: temporaryRoot)
     }
 }

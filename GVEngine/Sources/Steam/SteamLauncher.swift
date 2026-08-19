@@ -35,7 +35,7 @@ public enum SteamLauncher {
 
     public static func launch(game: SteamGame, bottle: Bottle) async throws {
         let steamRoot = steamExeURL(bottle: bottle).deletingLastPathComponent()
-        try? SteamFixup.repair(steamRoot: steamRoot)
+        try SteamFixup.repair(steamRoot: steamRoot)
         try await Wine.runProgram(
             at: steamExeURL(bottle: bottle), args: launchArgs(appId: game.appId), bottle: bottle
         )
@@ -45,7 +45,7 @@ public enum SteamLauncher {
     /// games) with the CEF flags that keep its UI rendering on Wine/Apple Silicon.
     public static func launchClient(bottle: Bottle) async throws {
         let steamRoot = steamExeURL(bottle: bottle).deletingLastPathComponent()
-        try? SteamFixup.repair(steamRoot: steamRoot)
+        try SteamFixup.repair(steamRoot: steamRoot)
         try await Wine.runProgram(
             at: steamExeURL(bottle: bottle), args: SteamFixup.launchArgs, bottle: bottle
         )

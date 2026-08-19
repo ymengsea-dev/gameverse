@@ -20,11 +20,14 @@
 import Foundation
 
 public enum SteamFixup {
+    /// Steam-level switches. The Chromium switches that fix the macOS/Wine
+    /// presentation bug are injected directly into steamwebhelper.exe by the
+    /// bundled shim; Steam does not reliably forward arbitrary Chromium flags.
     public static let launchArgs = [
-        "-cef-disable-gpu-compositing",
+        "-no-cef-sandbox",
         "-cef-disable-gpu",
-        "-cef-disable-sandbox",
-        "-cef-enable-gl=swiftshader"
+        "-cef-single-process",
+        "-noverifyfiles"
     ]
 
     public static var launchArgsString: String {
@@ -39,12 +42,13 @@ public enum SteamFixup {
 
     public enum SteamFixupError: Error {
         case shimResourceMissing(arch: String)
+        case genuineHelperMissing(path: String)
     }
 
     public static func repair(steamRoot: URL) throws {
         try WineRuntimeInstaller.installRuntimeLibraries()
         removeUpdateInhibitors(steamRoot: steamRoot)
-        try? installWebHelperShim(steamRoot: steamRoot)
+        try installWebHelperShim(steamRoot: steamRoot)
     }
 
     private static func removeUpdateInhibitors(steamRoot: URL) {
@@ -61,10 +65,6 @@ public enum SteamFixup {
             let realBackup = dir.appending(path: "steamwebhelper_real.exe")
             setImmutable(false, at: helper)
             setImmutable(false, at: realBackup)
-            if fileManager.fileExists(atPath: realBackup.path(percentEncoded: false)) {
-                try? fileManager.removeItem(at: helper)
-                try? fileManager.moveItem(at: realBackup, to: helper)
-            }
         }
 
         // Remove stale 32-bit package markers and mismatched DLLs that cause
@@ -76,19 +76,30 @@ public enum SteamFixup {
         let crashMarker = steamRoot.appending(path: ".crash")
         try? fileManager.removeItem(at: crashMarker)
 
-        // Clear corrupt CEF htmlcache in user AppData/Local/Steam/htmlcache so Steam
-        // UI renders fresh HTML components instead of loading cached broken state.
+        // Clear corrupt CEF caches for every Wine user. A prefix's Windows user
+        // does not necessarily have the same name as the host macOS account.
         let bottleDriveC = steamRoot.deletingLastPathComponent().deletingLastPathComponent()
-        let appDataLocalSteam = bottleDriveC
-            .appending(path: "users")
-            .appending(path: NSUserName())
-            .appending(path: "AppData")
-            .appending(path: "Local")
-            .appending(path: "Steam")
-            .appending(path: "htmlcache")
-        try? fileManager.removeItem(at: appDataLocalSteam)
+        clearHTMLCaches(bottleDriveC: bottleDriveC)
 
         ensureSteamLoopbackHosts(bottleDriveC: bottleDriveC)
+    }
+
+    private static func clearHTMLCaches(bottleDriveC: URL) {
+        let usersDirectory = bottleDriveC.appending(path: "users")
+        guard let users = try? FileManager.default.contentsOfDirectory(
+            at: usersDirectory,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        for user in users {
+            let cache = user
+                .appending(path: "AppData")
+                .appending(path: "Local")
+                .appending(path: "Steam")
+                .appending(path: "htmlcache")
+            try? FileManager.default.removeItem(at: cache)
+        }
     }
 
     /// Map steamloopback.host to 127.0.0.1 in Wine's Windows drivers/etc/hosts file so Steam CEF UI
@@ -144,14 +155,27 @@ public enum SteamFixup {
         }
 
         setImmutable(false, at: realHelper)
+        setImmutable(false, at: realBackup)
 
-        if !fileManager.fileExists(atPath: realBackup.path(percentEncoded: false)) {
-            // First install: preserve the genuine helper.
-            try fileManager.moveItem(at: realHelper, to: realBackup)
-        } else if fileManager.fileExists(atPath: realHelper.path(percentEncoded: false)) {
-            // Backup already exists — current helper is our old shim; discard it.
-            try fileManager.removeItem(at: realHelper)
+        // An identical target is already our shim. Keeping the existing genuine
+        // backup makes this operation idempotent.
+        let helperIsShim = fileManager.contentsEqual(
+            atPath: realHelper.path(percentEncoded: false),
+            andPath: shimURL.path(percentEncoded: false)
+        )
+        if helperIsShim && fileManager.fileExists(atPath: realBackup.path(percentEncoded: false)) {
+            return
         }
+        if helperIsShim {
+            throw SteamFixupError.genuineHelperMissing(path: realBackup.path(percentEncoded: false))
+        }
+
+        // The target is Valve's genuine helper (possibly a newer copy restored
+        // by a Steam update). Refresh the backup before putting our shim back.
+        if fileManager.fileExists(atPath: realBackup.path(percentEncoded: false)) {
+            try fileManager.removeItem(at: realBackup)
+        }
+        try fileManager.moveItem(at: realHelper, to: realBackup)
 
         try fileManager.copyItem(at: shimURL, to: realHelper)
     }

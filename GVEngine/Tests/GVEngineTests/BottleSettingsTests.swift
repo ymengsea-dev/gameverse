@@ -48,4 +48,15 @@ final class BottleSettingsTests: XCTestCase {
         let decoded = try BottleSettings.decode(from: metadataURL)
         XCTAssertEqual(decoded.name, "My Bottle")
     }
+
+    func testEnvironmentDoesNotDisableSteamClientService() {
+        let settings = BottleSettings()
+        var environment: [String: String] = [:]
+
+        settings.environmentVariables(wineEnv: &environment)
+
+        let overrides = environment["WINEDLLOVERRIDES"] ?? ""
+        XCTAssertFalse(overrides.lowercased().contains("steamservice"))
+        XCTAssertTrue(overrides.contains("mscoree="))
+    }
 }

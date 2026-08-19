@@ -279,10 +279,13 @@ public struct BottleSettings: Codable, Equatable {
 
     // swiftlint:disable:next cyclomatic_complexity
     public func environmentVariables(wineEnv: inout [String: String]) {
-        // Disables mscoree.dll (the .NET/Mono bridge) unconditionally, as well as 32-bit
-        // steamservice.dll / SteamService.dll to prevent 64-bit Steam from entering a c000007b
-        // exception stack overflow loop when initializing services under Wine.
-        var dllOverrides = ["mscoree=", "steamservice=d", "SteamService=d"]
+        // Disable only the optional .NET/Mono bridge. Steam's 64-bit client does
+        // probe its 32-bit steamservice.dll and Wine reports c000007b for that
+        // in-process probe, but Steam then starts the matching 32-bit
+        // SteamService.exe out of process. Disabling the DLL globally also
+        // affects that service process, producing error 126 and an endless
+        // "Install Steam Service" loop.
+        var dllOverrides = ["mscoree="]
         if dxvk {
             dllOverrides.append("dxgi,d3d9,d3d10core,d3d11=n,b")
         }
