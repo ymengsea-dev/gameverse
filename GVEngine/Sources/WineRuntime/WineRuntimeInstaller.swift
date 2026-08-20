@@ -36,22 +36,20 @@ public class WineRuntimeInstaller {
         return wineRuntimeVersion() != nil
     }
 
-    public static func install(from: URL) {
-        do {
-            if !FileManager.default.fileExists(atPath: applicationFolder.path) {
-                try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
-            } else {
-                // Recreate it
-                try FileManager.default.removeItem(at: applicationFolder)
-                try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
-            }
-
-            try Tar.untar(tarBall: from, toURL: applicationFolder)
-            try FileManager.default.removeItem(at: from)
-            try installRuntimeLibraries()
-        } catch {
-            print("Failed to install Wine Runtime: \(error)")
+    public static func install(from: URL) throws {
+        if !FileManager.default.fileExists(atPath: applicationFolder.path) {
+            try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
         }
+        // Preserve WineRuntimeDist and other application data. Older code removed
+        // the whole support directory, deleting its own local source archive.
+        if FileManager.default.fileExists(atPath: libraryFolder.path) {
+            try FileManager.default.removeItem(at: libraryFolder)
+        }
+
+        try Tar.untar(tarBall: from, toURL: applicationFolder)
+        try normalizeLegacyWineOnlyArchiveIfNeeded()
+        try FileManager.default.removeItem(at: from)
+        try installRuntimeLibraries()
     }
 
     /// x86_64 dylibs that Wine dlopen()s by leaf name at runtime but that the
@@ -80,6 +78,25 @@ public class WineRuntimeInstaller {
         }
     }
 
+    /// Accept the old archive layout (`bin`, `lib`, `share` at its root) while
+    /// all new runtime archives use `Libraries/Wine` plus renderer directories.
+    private static func normalizeLegacyWineOnlyArchiveIfNeeded() throws {
+        let legacyBin = applicationFolder.appending(path: "bin")
+        let installedWine = libraryFolder.appending(path: "Wine")
+        let hasWineLoader = ["wine64", "wine"].contains {
+            FileManager.default.fileExists(atPath: legacyBin.appending(path: $0).path)
+        }
+        guard hasWineLoader else { return }
+        guard !FileManager.default.fileExists(atPath: installedWine.path) else { return }
+
+        try FileManager.default.createDirectory(at: installedWine, withIntermediateDirectories: true)
+        for name in ["bin", "lib", "share"] {
+            let source = applicationFolder.appending(path: name)
+            guard FileManager.default.fileExists(atPath: source.path) else { continue }
+            try FileManager.default.moveItem(at: source, to: installedWine.appending(path: name))
+        }
+    }
+
     public static func uninstall() {
         do {
             try FileManager.default.removeItem(at: libraryFolder)
@@ -88,8 +105,8 @@ public class WineRuntimeInstaller {
         }
     }
 
-    /// The bundled Wine runtime version. GameVerse ships a self-built Wine 11.0
-    /// core (see WineRuntimeSource); there is no update server, so never offer updates.
+    /// CrossOver 26 is based on the stable Wine 11.0 release. The actual engine
+    /// string shown in the UI is always queried from `wine --version`.
     public static let bundledWineVersion = SemanticVersion(11, 0, 0)
 
     public static func shouldUpdateWineRuntime() async -> (Bool, SemanticVersion) {

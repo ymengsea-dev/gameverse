@@ -7856,6 +7856,12 @@
         }
       }
     },
+    "Configured Renderer" : {
+
+    },
+    "Could Not Save Bottle Settings" : {
+
+    },
     "Create" : {
 
     },
@@ -8830,10 +8836,10 @@
     "Delete this bottle and all its games?" : {
 
     },
-    "Done" : {
+    "Direct3D Renderer" : {
 
     },
-    "DXVK (Direct3D → Vulkan)" : {
+    "Engine" : {
 
     },
     "environment.add" : {
@@ -9689,6 +9695,9 @@
         }
       }
     },
+    "Installed Content (%lld)" : {
+
+    },
     "kill.bottles" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -10253,6 +10262,12 @@
 
     },
     "No Games or Apps Yet" : {
+
+    },
+    "No installed apps or games were detected." : {
+
+    },
+    "OK" : {
 
     },
     "open.bottle" : {
@@ -14511,6 +14526,9 @@
         }
       }
     },
+    "Save" : {
+
+    },
     "settings.general" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -18213,6 +18231,12 @@
     "Show C: Drive in Finder" : {
 
     },
+    "Show in Finder" : {
+
+    },
+    "Show Metal Performance HUD" : {
+
+    },
     "showAlertOnFirstLaunch.button.dontMove" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -19183,6 +19207,12 @@
         }
       }
     },
+    "Translation Path" : {
+
+    },
+    "Unavailable" : {
+
+    },
     "update.whiskywine.description" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -19600,7 +19630,7 @@
     "Windows Version" : {
 
     },
-    "Wine Version" : {
+    "Wine %@" : {
 
     },
     "wine.clearShaderCaches" : {

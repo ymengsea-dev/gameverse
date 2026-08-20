@@ -21,15 +21,45 @@ import Foundation
 
 extension FileManager {
     func replaceDLLs(
-        in destinationDirectory: URL, withContentsIn sourceDirectory: URL, makeOriginalCopy: Bool = false
+        in destinationDirectory: URL, withContentsIn sourceDirectory: URL, makeOriginalCopy: Bool = true
     ) throws {
         let enumerator = FileManager.default.enumerator(
             at: sourceDirectory, includingPropertiesForKeys: [.isRegularFileKey])
 
         while let fileURL = enumerator?.nextObject() as? URL {
-            guard fileURL.pathExtension == "dll" else { return }
+            guard fileURL.pathExtension.lowercased() == "dll" else { continue }
             let originalURL = destinationDirectory.appending(path: fileURL.lastPathComponent)
             try FileManager.default.replaceFile(at: originalURL, with: fileURL, makeOriginalCopy: makeOriginalCopy)
+        }
+    }
+
+    /// Restore Wine's original DLLs after a translation backend was installed.
+    /// Backend files without a matching original (for example DXMT's
+    /// `winemetal.dll`) are removed using the renderer's source directory.
+    func restoreDLLs(
+        in destinationDirectory: URL, installedFrom sourceDirectories: [URL], builtinDirectory: URL
+    ) throws {
+        for sourceDirectory in sourceDirectories {
+            let enumerator = enumerator(at: sourceDirectory, includingPropertiesForKeys: [.isRegularFileKey])
+            while let sourceURL = enumerator?.nextObject() as? URL {
+                guard sourceURL.pathExtension.lowercased() == "dll" else { continue }
+                let activeURL = destinationDirectory.appending(path: sourceURL.lastPathComponent)
+                let originalURL = activeURL.appendingPathExtension("orig")
+                if fileExists(atPath: originalURL.path(percentEncoded: false)) {
+                    if fileExists(atPath: activeURL.path(percentEncoded: false)) {
+                        try removeItem(at: activeURL)
+                    }
+                    try moveItem(at: originalURL, to: activeURL)
+                } else {
+                    let builtinURL = builtinDirectory.appending(path: sourceURL.lastPathComponent)
+                    if fileExists(atPath: activeURL.path(percentEncoded: false)) {
+                        try removeItem(at: activeURL)
+                    }
+                    if fileExists(atPath: builtinURL.path(percentEncoded: false)) {
+                        try copyItem(at: builtinURL, to: activeURL)
+                    }
+                }
+            }
         }
     }
 
@@ -39,15 +69,16 @@ extension FileManager {
                 let copyURL = originalURL.appendingPathExtension("orig")
 
                 if fileExists(atPath: copyURL.path(percentEncoded: false)) {
-                    try FileManager.default.removeItem(at: copyURL)
+                    // Preserve the first backup: it is Wine's builtin DLL, while
+                    // the current file may belong to another renderer.
+                    try FileManager.default.removeItem(at: originalURL)
+                } else {
+                    try FileManager.default.moveItem(at: originalURL, to: copyURL)
                 }
-
-                try FileManager.default.moveItem(at: originalURL, to: copyURL)
             } else {
                 try FileManager.default.removeItem(at: originalURL)
             }
-
-            try FileManager.default.copyItem(at: replacementURL, to: originalURL)
         }
+        try FileManager.default.copyItem(at: replacementURL, to: originalURL)
     }
 }

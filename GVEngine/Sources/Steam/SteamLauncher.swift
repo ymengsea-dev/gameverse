@@ -37,7 +37,8 @@ public enum SteamLauncher {
         let steamRoot = steamExeURL(bottle: bottle).deletingLastPathComponent()
         try SteamFixup.repair(steamRoot: steamRoot)
         try await Wine.runProgram(
-            at: steamExeURL(bottle: bottle), args: launchArgs(appId: game.appId), bottle: bottle
+            at: steamExeURL(bottle: bottle), args: launchArgs(appId: game.appId), bottle: bottle,
+            graphicsSource: game.installDir
         )
     }
 
@@ -47,7 +48,8 @@ public enum SteamLauncher {
         let steamRoot = steamExeURL(bottle: bottle).deletingLastPathComponent()
         try SteamFixup.repair(steamRoot: steamRoot)
         try await Wine.runProgram(
-            at: steamExeURL(bottle: bottle), args: SteamFixup.launchArgs, bottle: bottle
+            at: steamExeURL(bottle: bottle), args: SteamFixup.launchArgs, bottle: bottle,
+            rendererOverride: .wineD3D
         )
     }
 }

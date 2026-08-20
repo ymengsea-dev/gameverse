@@ -125,12 +125,42 @@ public struct BottleMetalConfig: Codable, Equatable {
     }
 }
 
+/// Direct3D translation backend requested for a bottle. `auto` is resolved for
+/// each launched game from the DirectX DLLs referenced by its executable files.
+public enum GraphicsRenderer: String, Codable, CaseIterable, Sendable {
+    case auto
+    case d3dMetal
+    case dxmt
+    case dxvk
+    case wineD3D
+
+    public var displayName: String {
+        switch self {
+        case .auto: return "Auto"
+        case .d3dMetal: return "D3DMetal"
+        case .dxmt: return "DXMT"
+        case .dxvk: return "DXVK"
+        case .wineD3D: return "WineD3D"
+        }
+    }
+
+    public var translationPath: String {
+        switch self {
+        case .auto: return "Selected for each game"
+        case .d3dMetal: return "Direct3D → Metal"
+        case .dxmt: return "Direct3D 10/11 → Metal"
+        case .dxvk: return "Direct3D 10/11 → Vulkan → MoltenVK → Metal"
+        case .wineD3D: return "Direct3D → OpenGL"
+        }
+    }
+}
+
 public enum DXVKHUD: Codable, Equatable {
     case full, partial, fps, off
 }
 
 public struct BottleDXVKConfig: Codable, Equatable {
-    var dxvk: Bool = true
+    var renderer: GraphicsRenderer = .auto
     var dxvkAsync: Bool = true
     var dxvkHud: DXVKHUD = .off
 
@@ -138,9 +168,28 @@ public struct BottleDXVKConfig: Codable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.dxvk = try container.decodeIfPresent(Bool.self, forKey: .dxvk) ?? true
+        if let renderer = try container.decodeIfPresent(GraphicsRenderer.self, forKey: .renderer) {
+            self.renderer = renderer
+        } else {
+            // Migrate bottles written by GameVerse/Whisky before renderer selection
+            // was represented explicitly.
+            let legacyDXVK = try container.decodeIfPresent(Bool.self, forKey: .dxvk) ?? true
+            self.renderer = legacyDXVK ? .dxvk : .wineD3D
+        }
         self.dxvkAsync = try container.decodeIfPresent(Bool.self, forKey: .dxvkAsync) ?? true
         self.dxvkHud = try container.decodeIfPresent(DXVKHUD.self, forKey: .dxvkHud) ?? .off
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(renderer, forKey: .renderer)
+        try container.encode(renderer == .dxvk, forKey: .dxvk)
+        try container.encode(dxvkAsync, forKey: .dxvkAsync)
+        try container.encode(dxvkHud, forKey: .dxvkHud)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case renderer, dxvk, dxvkAsync, dxvkHud
     }
 }
 
@@ -227,8 +276,15 @@ public struct BottleSettings: Codable, Equatable {
     }
 
     public var dxvk: Bool {
-        get { return dxvkConfig.dxvk }
-        set { dxvkConfig.dxvk = newValue }
+        get { return dxvkConfig.renderer == .dxvk }
+        set { dxvkConfig.renderer = newValue ? .dxvk : .wineD3D }
+    }
+
+    /// Requested Direct3D renderer. Auto is resolved at launch time and does
+    /// not mutate the persisted preference.
+    public var graphicsRenderer: GraphicsRenderer {
+        get { return dxvkConfig.renderer }
+        set { dxvkConfig.renderer = newValue }
     }
 
     public var dxvkAsync: Bool {
@@ -278,19 +334,29 @@ public struct BottleSettings: Codable, Equatable {
     }
 
     // swiftlint:disable:next cyclomatic_complexity
-    public func environmentVariables(wineEnv: inout [String: String]) {
+    public func environmentVariables(
+        wineEnv: inout [String: String], resolvedRenderer: GraphicsRenderer? = nil
+    ) {
         // Disable only the optional .NET/Mono bridge. Steam's 64-bit client does
         // probe its 32-bit steamservice.dll and Wine reports c000007b for that
         // in-process probe, but Steam then starts the matching 32-bit
         // SteamService.exe out of process. Disabling the DLL globally also
         // affects that service process, producing error 126 and an endless
         // "Install Steam Service" loop.
+        let renderer = resolvedRenderer ?? graphicsRenderer
         var dllOverrides = ["mscoree="]
-        if dxvk {
-            dllOverrides.append("dxgi,d3d9,d3d10core,d3d11=n,b")
+        switch renderer {
+        case .d3dMetal:
+            dllOverrides.append("dxgi,d3d11,d3d12=n,b")
+        case .dxmt:
+            dllOverrides.append("dxgi,d3d10core,d3d11,winemetal=n,b")
+        case .dxvk:
+            dllOverrides.append("dxgi,d3d10core,d3d11=n,b")
+        case .auto, .wineD3D:
+            break
         }
         wineEnv.updateValue(dllOverrides.joined(separator: ";"), forKey: "WINEDLLOVERRIDES")
-        if dxvk {
+        if renderer == .dxvk {
             switch dxvkHud {
             case .full:
                 wineEnv.updateValue("full", forKey: "DXVK_HUD")
@@ -303,7 +369,7 @@ public struct BottleSettings: Codable, Equatable {
             }
         }
 
-        if dxvkAsync {
+        if renderer == .dxvk && dxvkAsync {
             wineEnv.updateValue("1", forKey: "DXVK_ASYNC")
         }
 
@@ -322,6 +388,10 @@ public struct BottleSettings: Codable, Equatable {
 
         if metalHud {
             wineEnv.updateValue("1", forKey: "MTL_HUD_ENABLED")
+            wineEnv.updateValue(
+                "device,rosetta,memory,fps,fpsgraph,frameinterval,gputime,thermal",
+                forKey: "MTL_HUD_ELEMENTS"
+            )
         }
 
         if metalTrace {

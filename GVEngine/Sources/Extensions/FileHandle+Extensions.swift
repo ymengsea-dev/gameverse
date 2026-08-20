@@ -84,8 +84,8 @@ extension FileHandle {
         header += "Metal HUD: \(bottle.settings.metalHud)\n"
         header += "Metal Trace: \(bottle.settings.metalTrace)\n\n"
 
-        if bottle.settings.dxvk {
-            header += "DXVK: \(bottle.settings.dxvk)\n"
+        header += "Graphics Renderer: \(bottle.settings.graphicsRenderer.displayName)\n"
+        if bottle.settings.graphicsRenderer == .dxvk {
             header += "DXVK Async: \(bottle.settings.dxvkAsync)\n"
             header += "DXVK HUD: \(bottle.settings.dxvkHud)\n\n"
         }

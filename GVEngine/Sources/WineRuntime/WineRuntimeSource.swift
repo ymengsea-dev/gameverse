@@ -19,22 +19,15 @@
 
 import Foundation
 
-/// Where to obtain the Wine runtime tarball: a self-built Wine 11.0 core (compiled from
-/// the official wine-mirror source, with gnutls enabled for bcrypt/package-signature support)
-/// — replacing the old WhiskyWine 2.5.0 (Wine 7.7) bundle, whose upstream
-/// `data.getwhisky.app/Wine` endpoint is dead and whose wine core is too old for current Steam
-/// (steamwebhelper/CEF and general Win32 API compatibility).
-/// GPTK 4.0 beta 2's D3DMetal bridge is deliberately NOT merged into this build: it requires
-/// wine source patches (e.g. Mythic's crossover branch) that vanilla wine-mirror lacks, and
-/// merging it caused a wine-core crash during Steam's self-update. DXVK remains the working
-/// GPU-acceleration path. Distributed as a local file since there is no hosted CDN for this
-/// personal build.
+/// Local artifact produced by `scripts/build-gameverse-runtime.sh`. The engine is compiled
+/// from CodeWeavers' published CrossOver 26 Wine source (Wine 11.0 plus its macOS/D3DMetal
+/// integration patches). Apple's closed-source D3DMetal files are supplied by the builder
+/// after accepting Apple's license; they are intentionally not stored in this repository.
 public enum WineRuntimeSource {
-    public static let tarballURLString =
-        // swiftlint:disable:next line_length
-        "file:///Users/macbook/Library/Application%20Support/com.mrmengsea.GameVerse/WineRuntimeDist/GameVerseWineRuntime-11-nogptk.tar.gz"
-
     public static var tarballURL: URL? {
-        URL(string: tarballURLString)
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appending(path: Bundle.gameVerseBundleIdentifier)
+            .appending(path: "WineRuntimeDist")
+            .appending(path: "GameVerseRuntime-CX26-GPTK3.tar.gz")
     }
 }

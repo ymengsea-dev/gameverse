@@ -24,7 +24,8 @@ final class WineRuntimeSourceTests: XCTestCase {
     func testTarballURLIsLocalWineRuntimeDist() throws {
         let url = try XCTUnwrap(WineRuntimeSource.tarballURL)
         XCTAssertEqual(url.isFileURL, true)
-        XCTAssertTrue(url.path().hasSuffix("GameVerseWineRuntime-11-nogptk.tar.gz"))
+        XCTAssertTrue(url.path().hasSuffix("GameVerseRuntime-CX26-GPTK3.tar.gz"))
+        XCTAssertTrue(url.path().contains("WineRuntimeDist"))
     }
 
     func testShouldUpdateNeverOffersUpdate() async {

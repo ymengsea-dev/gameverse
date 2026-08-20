@@ -95,12 +95,19 @@ struct SetupView: View {
         Task.detached {
             // install(from:) deletes the tarball it's given, so hand it a copy.
             let temp = FileManager.default.temporaryDirectory.appending(path: source.lastPathComponent)
-            try? FileManager.default.removeItem(at: temp)
-            try? FileManager.default.copyItem(at: source, to: temp)
-            WineRuntimeInstaller.install(from: temp)
-            await MainActor.run {
-                installingRuntime = false
-                library.reload()
+            do {
+                try? FileManager.default.removeItem(at: temp)
+                try FileManager.default.copyItem(at: source, to: temp)
+                try WineRuntimeInstaller.install(from: temp)
+                await MainActor.run {
+                    installingRuntime = false
+                    library.reload()
+                }
+            } catch {
+                await MainActor.run {
+                    installingRuntime = false
+                    self.error = "Wine runtime install failed: \(error.localizedDescription)"
+                }
             }
         }
     }

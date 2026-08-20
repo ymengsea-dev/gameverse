@@ -16,7 +16,6 @@
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		AA0000000000000000000002 /* GameVerse */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = GameVerse; sourceTree = "<group>"; };
-		AA0000000000000000000020 /* GVEngine */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = GVEngine; sourceTree = "<group>"; };
 		AA0000000000000000000021 /* Libraries */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Libraries; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
@@ -36,7 +35,6 @@
 			isa = PBXGroup;
 			children = (
 				AA0000000000000000000002 /* GameVerse */,
-				AA0000000000000000000020 /* GVEngine */,
 				AA0000000000000000000021 /* Libraries */,
 				AA0000000000000000000005 /* Products */,
 			);

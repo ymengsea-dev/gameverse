@@ -1,0 +1,7 @@
+# Generated Wine/GPTK runtime archives are large and may contain components
+# whose licenses do not permit redistribution from this repository.
+/dist/
+
+# Xcode recreates this workspace-local SwiftPM lockfile while the project is
+# open; the project itself already declares and resolves its package versions.
+/GameVerse.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved

@@ -49,6 +49,39 @@ final class BottleSettingsTests: XCTestCase {
         XCTAssertEqual(decoded.name, "My Bottle")
     }
 
+    func testNewBottlesDefaultToAutomaticGraphicsSelection() {
+        XCTAssertEqual(BottleSettings().graphicsRenderer, .auto)
+    }
+
+    func testRendererRoundTrips() throws {
+        let encoder = PropertyListEncoder()
+        var original = BottleSettings()
+        original.graphicsRenderer = .d3dMetal
+
+        let data = try encoder.encode(original)
+        let decoded = try PropertyListDecoder().decode(BottleSettings.self, from: data)
+
+        XCTAssertEqual(decoded.graphicsRenderer, .d3dMetal)
+    }
+
+    func testLegacyDXVKBooleanMigratesToRenderer() throws {
+        struct LegacyDXVKConfig: Encodable {
+            let dxvk: Bool
+            let dxvkAsync = true
+            let dxvkHud = DXVKHUD.off
+        }
+        struct LegacySettings: Encodable {
+            let dxvkConfig: LegacyDXVKConfig
+        }
+
+        let data = try PropertyListEncoder().encode(
+            LegacySettings(dxvkConfig: LegacyDXVKConfig(dxvk: false))
+        )
+        let decoded = try PropertyListDecoder().decode(BottleSettings.self, from: data)
+
+        XCTAssertEqual(decoded.graphicsRenderer, .wineD3D)
+    }
+
     func testEnvironmentDoesNotDisableSteamClientService() {
         let settings = BottleSettings()
         var environment: [String: String] = [:]
@@ -58,5 +91,29 @@ final class BottleSettingsTests: XCTestCase {
         let overrides = environment["WINEDLLOVERRIDES"] ?? ""
         XCTAssertFalse(overrides.lowercased().contains("steamservice"))
         XCTAssertTrue(overrides.contains("mscoree="))
+    }
+
+    func testD3DMetalEnvironmentUsesNativeDX11AndDX12DLLs() {
+        let settings = BottleSettings()
+        var environment: [String: String] = [:]
+
+        settings.environmentVariables(wineEnv: &environment, resolvedRenderer: .d3dMetal)
+
+        XCTAssertEqual(environment["WINEDLLOVERRIDES"], "mscoree=;dxgi,d3d11,d3d12=n,b")
+    }
+
+    func testMetalPerformanceHUDEnvironmentCanBeToggled() {
+        var settings = BottleSettings()
+        var disabledEnvironment: [String: String] = [:]
+        settings.environmentVariables(wineEnv: &disabledEnvironment)
+        XCTAssertNil(disabledEnvironment["MTL_HUD_ENABLED"])
+
+        settings.metalHud = true
+        var enabledEnvironment: [String: String] = [:]
+        settings.environmentVariables(wineEnv: &enabledEnvironment)
+
+        XCTAssertEqual(enabledEnvironment["MTL_HUD_ENABLED"], "1")
+        XCTAssertTrue(enabledEnvironment["MTL_HUD_ELEMENTS"]?.contains("fps") == true)
+        XCTAssertTrue(enabledEnvironment["MTL_HUD_ELEMENTS"]?.contains("gputime") == true)
     }
 }

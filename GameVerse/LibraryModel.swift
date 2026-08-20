@@ -37,6 +37,31 @@ struct GameItem: Identifiable {
     }
 }
 
+struct InstalledBottleItem: Identifiable {
+    enum Kind: String {
+        case steamClient
+        case steamGame
+        case pinnedApp
+        case startMenuApp
+
+        var detailLabel: String? {
+            switch self {
+            case .steamClient: return nil
+            case .steamGame: return "Steam Game"
+            case .pinnedApp: return "Pinned App"
+            case .startMenuApp: return "Windows App"
+            }
+        }
+    }
+
+    let name: String
+    let kind: Kind
+    let location: URL
+    let icon: NSImage?
+
+    var id: String { "\(kind.rawValue):\(location.path)" }
+}
+
 /// The app's single source of truth: Wine bottles and the launchable items
 /// inside them. Wraps GVEngine's `BottleData` (persists the list of bottles).
 @MainActor
@@ -82,6 +107,52 @@ final class LibraryModel: ObservableObject {
             sorted.insert(GameItem(source: .steamClient, displayName: "Steam", bottle: bottle), at: 0)
         }
         return sorted
+    }
+
+    /// Installed content known through Steam manifests, explicit pins, and
+    /// normal Windows installer-created Start Menu shortcuts.
+    func installedItems(in bottle: Bottle) -> [InstalledBottleItem] {
+        var result: [InstalledBottleItem] = []
+        var names: Set<String> = []
+
+        func append(_ item: InstalledBottleItem) {
+            let key = item.name.folding(
+                options: [.caseInsensitive, .diacriticInsensitive], locale: .current
+            )
+            guard names.insert(key).inserted else { return }
+            result.append(item)
+        }
+
+        for item in items(in: bottle) {
+            switch item.source {
+            case .program(let program):
+                append(InstalledBottleItem(
+                    name: item.displayName, kind: .pinnedApp, location: program.url,
+                    icon: item.icon
+                ))
+            case .steam(let game):
+                append(InstalledBottleItem(
+                    name: item.displayName, kind: .steamGame, location: game.installDir,
+                    icon: item.icon
+                ))
+            case .steamClient:
+                append(InstalledBottleItem(
+                    name: item.displayName, kind: .steamClient,
+                    location: SteamLauncher.steamExeURL(bottle: bottle), icon: item.icon
+                ))
+            }
+        }
+
+        for shortcut in InstalledProgramDiscovery.discoverShortcuts(in: bottle) {
+            append(InstalledBottleItem(
+                name: shortcut.name, kind: .startMenuApp, location: shortcut.shortcutURL,
+                icon: nil
+            ))
+        }
+
+        return result.sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
     }
 
     /// Everything across every bottle — the "All Games" shelf.
