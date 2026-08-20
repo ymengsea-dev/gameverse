@@ -107,4 +107,31 @@ final class SteamLibraryTests: XCTestCase {
 
         XCTAssertEqual(games.first?.iconURL, iconFile)
     }
+
+    func testHidesSteamworksCommonRedistributables() throws {
+        let (bottle, dir) = try makeFixtureBottle()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let steamApps = dir
+            .appending(path: "drive_c")
+            .appending(path: "Program Files (x86)")
+            .appending(path: "Steam")
+            .appending(path: "steamapps")
+        let redistributablesManifest = #"""
+        "AppState"
+        {
+            "appid"        "228980"
+            "name"         "Steamworks Common Redistributables"
+            "installdir"   "Steamworks Shared"
+        }
+        """#
+        try redistributablesManifest.write(
+            to: steamApps.appending(path: "appmanifest_228980.acf"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let games = SteamLibrary.discoverGames(in: bottle)
+
+        XCTAssertEqual(games.map(\.appId), [440])
+    }
 }

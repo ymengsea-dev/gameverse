@@ -57,10 +57,6 @@ struct BottleInspectorView: View {
         Wine.graphicsRendererAvailability
     }
 
-    private var installedItems: [InstalledBottleItem] {
-        library.installedItems(in: bottle)
-    }
-
     private func rendererIsAvailable(_ renderer: GraphicsRenderer) -> Bool {
         switch renderer {
         case .auto, .wineD3D: return true
@@ -119,47 +115,6 @@ struct BottleInspectorView: View {
                 }
 
                 Section {
-                    if installedItems.isEmpty {
-                        Text("No installed apps or games were detected.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(installedItems) { item in
-                            HStack(spacing: 10) {
-                                Group {
-                                    if let icon = item.icon {
-                                        Image(nsImage: icon)
-                                            .resizable()
-                                            .scaledToFit()
-                                    } else {
-                                        Image(systemName: "app.fill")
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .frame(width: 24, height: 24)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.name).lineLimit(1)
-                                    if let detailLabel = item.kind.detailLabel {
-                                        Text(detailLabel)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                Spacer()
-                                Button {
-                                    NSWorkspace.shared.activateFileViewerSelecting([item.location])
-                                } label: {
-                                    Image(systemName: "folder")
-                                }
-                                .buttonStyle(.borderless)
-                                .help("Show in Finder")
-                            }
-                        }
-                    }
-                } header: {
-                    Text("Installed Content (\(installedItems.count))")
-                }
-
-                Section {
                     Button("Show C: Drive in Finder") {
                         NSWorkspace.shared.open(bottle.url.appending(path: "drive_c"))
                     }
@@ -175,7 +130,7 @@ struct BottleInspectorView: View {
             }
             .formStyle(.grouped)
         }
-        .frame(width: 520, height: 680)
+        .frame(width: 520, height: 500)
         .onAppear {
             // A TextField is the first focusable control in this sheet, so
             // AppKit otherwise selects its entire value as the sheet opens.

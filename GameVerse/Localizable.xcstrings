@@ -9695,9 +9695,6 @@
         }
       }
     },
-    "Installed Content (%lld)" : {
-
-    },
     "kill.bottles" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -10262,9 +10259,6 @@
 
     },
     "No Games or Apps Yet" : {
-
-    },
-    "No installed apps or games were detected." : {
 
     },
     "OK" : {
@@ -18229,9 +18223,6 @@
       }
     },
     "Show C: Drive in Finder" : {
-
-    },
-    "Show in Finder" : {
 
     },
     "Show Metal Performance HUD" : {

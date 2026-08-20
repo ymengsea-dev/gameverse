@@ -22,6 +22,12 @@ import Foundation
 /// Discovers installed Steam games by reading Steam's own library manifests
 /// directly from disk — no Steam client UI interaction required to list them.
 public enum SteamLibrary {
+    /// Steam installs these app manifests as shared dependencies, but they are
+    /// not user-launchable games and must not appear in the launcher library.
+    private static let nonLaunchableAppIDs: Set<Int> = [
+        228980 // Steamworks Common Redistributables
+    ]
+
     public static func steamRoot(in bottle: Bottle) -> URL {
         bottle.url
             .appending(path: "drive_c")
@@ -79,6 +85,7 @@ public enum SteamLibrary {
         guard case let .object(appState)? = root["AppState"],
               case let .string(appIdString)? = appState["appid"],
               let appId = Int(appIdString),
+              !nonLaunchableAppIDs.contains(appId),
               case let .string(name)? = appState["name"],
               case let .string(installDirName)? = appState["installdir"] else { return nil }
 
