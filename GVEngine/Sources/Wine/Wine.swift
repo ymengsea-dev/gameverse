@@ -248,10 +248,11 @@ public class Wine {
         return try await runWine(["cmd", "/c", url.path(percentEncoded: false)], bottle: bottle)
     }
 
-    public static func killBottle(bottle: Bottle) throws {
-        Task.detached(priority: .userInitiated) {
-            try await runWineserver(["-k"], bottle: bottle)
-        }
+    /// Stop every Wine process associated with this bottle's prefix. Awaiting
+    /// the wineserver command lets callers report failures instead of losing
+    /// them in an unstructured detached task.
+    public static func killBottle(bottle: Bottle) async throws {
+        _ = try await runWineserver(["-k"], bottle: bottle)
     }
 
     public static var graphicsRendererAvailability: GraphicsRendererAvailability {

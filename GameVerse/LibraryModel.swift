@@ -37,6 +37,12 @@ struct GameItem: Identifiable {
     }
 }
 
+struct GameStorageItem: Identifiable, Sendable {
+    let id: String
+    let name: String
+    let installationURL: URL
+}
+
 /// The app's single source of truth: Wine bottles and the launchable items
 /// inside them. Wraps GVEngine's `BottleData` (persists the list of bottles).
 @MainActor
@@ -88,6 +94,47 @@ final class LibraryModel: ObservableObject {
     var allItems: [GameItem] {
         bottles.flatMap { items(in: $0) }
             .sorted { $0.displayName.localizedCompare($1.displayName) == .orderedAscending }
+    }
+
+    /// Game/app installation roots for one bottle. Steam itself is excluded,
+    /// and a pinned executable inside an already-discovered Steam game is not
+    /// counted a second time.
+    func storageItems(in bottle: Bottle) -> [GameStorageItem] {
+        let launchableItems = items(in: bottle)
+        let steamRoots = launchableItems.compactMap { item -> URL? in
+            guard case .steam(let game) = item.source else { return nil }
+            return game.installDir.standardizedFileURL
+        }
+
+        var seen: Set<String> = []
+        var result: [GameStorageItem] = []
+
+        for item in launchableItems {
+            let installationURL: URL
+            switch item.source {
+            case .steam(let game):
+                installationURL = game.installDir.standardizedFileURL
+            case .program(let program):
+                installationURL = program.url.deletingLastPathComponent().standardizedFileURL
+                if steamRoots.contains(where: { installationURL.isInside($0) }) {
+                    continue
+                }
+            case .steamClient:
+                continue
+            }
+
+            let id = "\(item.bottle.url.path)#\(installationURL.path)"
+            guard seen.insert(id).inserted else { continue }
+            result.append(GameStorageItem(
+                id: id,
+                name: item.displayName,
+                installationURL: installationURL
+            ))
+        }
+
+        return result.sorted {
+            $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
     }
 
     func launch(_ item: GameItem) async {
@@ -182,5 +229,19 @@ final class LibraryModel: ObservableObject {
                 print("Steam repair failed: \(error)")
             }
         }
+    }
+
+    /// Quit games, clients, and Wine background services for one bottle only.
+    /// Other GameVerse bottles and external prefixes such as CrossOver are not affected.
+    func quitBottle(_ bottle: Bottle) async throws {
+        try await Wine.killBottle(bottle: bottle)
+    }
+}
+
+private extension URL {
+    func isInside(_ directory: URL) -> Bool {
+        let childPath = standardizedFileURL.path
+        let directoryPath = directory.standardizedFileURL.path
+        return childPath == directoryPath || childPath.hasPrefix(directoryPath + "/")
     }
 }

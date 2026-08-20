@@ -114,6 +114,8 @@ struct BottleInspectorView: View {
                     Toggle("Show Metal Performance HUD", isOn: $draftSettings.metalHud)
                 }
 
+                BottleStorageSection(bottle: bottle)
+
                 Section {
                     Button("Show C: Drive in Finder") {
                         NSWorkspace.shared.open(bottle.url.appending(path: "drive_c"))
@@ -130,7 +132,7 @@ struct BottleInspectorView: View {
             }
             .formStyle(.grouped)
         }
-        .frame(width: 520, height: 500)
+        .frame(width: 560, height: 620)
         .onAppear {
             // A TextField is the first focusable control in this sheet, so
             // AppKit otherwise selects its entire value as the sheet opens.

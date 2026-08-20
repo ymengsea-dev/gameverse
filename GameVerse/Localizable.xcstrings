@@ -3058,6 +3058,9 @@
         }
       }
     },
+    "Calculating…" : {
+
+    },
     "Cancel" : {
 
     },
@@ -7859,6 +7862,9 @@
     "Configured Renderer" : {
 
     },
+    "Could Not Quit Bottle" : {
+
+    },
     "Could Not Save Bottle Settings" : {
 
     },
@@ -9116,6 +9122,12 @@
         }
       }
     },
+    "Folder unavailable" : {
+
+    },
+    "Game Storage" : {
+
+    },
     "gameLibrary.empty.description" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -10261,7 +10273,13 @@
     "No Games or Apps Yet" : {
 
     },
+    "No installed games" : {
+
+    },
     "OK" : {
+
+    },
+    "Open Game Folder" : {
 
     },
     "open.bottle" : {
@@ -13691,6 +13709,18 @@
           }
         }
       }
+    },
+    "Quit Bottle" : {
+
+    },
+    "Quit every app in this bottle?" : {
+
+    },
+    "Quitting…" : {
+
+    },
+    "Refresh" : {
+
     },
     "Remove from Library" : {
 
@@ -18776,6 +18806,9 @@
         }
       }
     },
+    "Stop all apps and Wine services in this bottle" : {
+
+    },
     "tab.config" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -19197,6 +19230,12 @@
           }
         }
       }
+    },
+    "This stops Steam, running games, and all Wine services in the bottle. Unsaved game progress will be lost." : {
+
+    },
+    "Total" : {
+
     },
     "Translation Path" : {
 

@@ -19,6 +19,9 @@ struct GameGridView: View {
     var showsBottle: Bool = false
 
     @State private var showingInspector = false
+    @State private var confirmingQuitBottle = false
+    @State private var isQuittingBottle = false
+    @State private var quitBottleError: String?
 
     private let columns = [GridItem(.adaptive(minimum: 170), spacing: 20)]
 
@@ -41,6 +44,25 @@ struct GameGridView: View {
         .toolbar { toolbar }
         .sheet(isPresented: $showingInspector) {
             if let bottle { BottleInspectorView(bottle: bottle) }
+        }
+        .confirmationDialog(
+            "Quit every app in this bottle?",
+            isPresented: $confirmingQuitBottle,
+            titleVisibility: .visible
+        ) {
+            if let bottle {
+                Button("Quit Bottle", role: .destructive) { quit(bottle) }
+            }
+        } message: {
+            Text("This stops Steam, running games, and all Wine services in the bottle. Unsaved game progress will be lost.")
+        }
+        .alert("Could Not Quit Bottle", isPresented: Binding(
+            get: { quitBottleError != nil },
+            set: { if !$0 { quitBottleError = nil } }
+        )) {
+            Button("OK", role: .cancel) { quitBottleError = nil }
+        } message: {
+            Text(quitBottleError ?? "Unknown error")
         }
     }
 
@@ -74,6 +96,26 @@ struct GameGridView: View {
                 } label: {
                     Label("Bottle Settings", systemImage: "slider.horizontal.3")
                 }
+                Button {
+                    confirmingQuitBottle = true
+                } label: {
+                    Label(isQuittingBottle ? "Quitting…" : "Quit Bottle", systemImage: "power")
+                }
+                .disabled(isQuittingBottle)
+                .help("Stop all apps and Wine services in this bottle")
+            }
+        }
+    }
+
+    private func quit(_ bottle: Bottle) {
+        guard !isQuittingBottle else { return }
+        isQuittingBottle = true
+        Task {
+            defer { isQuittingBottle = false }
+            do {
+                try await library.quitBottle(bottle)
+            } catch {
+                quitBottleError = error.localizedDescription
             }
         }
     }

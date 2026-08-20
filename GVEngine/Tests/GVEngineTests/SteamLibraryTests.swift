@@ -31,6 +31,7 @@ final class SteamLibraryTests: XCTestCase {
         let steamApps = steamRoot.appending(path: "steamapps")
         let common = steamApps.appending(path: "common").appending(path: "Team Fortress 2")
         try FileManager.default.createDirectory(at: common, withIntermediateDirectories: true)
+        try Data([0x4D, 0x5A]).write(to: common.appending(path: "hl2.exe"))
 
         let libraryFolders = #"""
         "libraryfolders"
@@ -89,6 +90,37 @@ final class SteamLibraryTests: XCTestCase {
         XCTAssertEqual(SteamLibrary.discoverGames(in: bottle), [])
     }
 
+    func testHidesGameWhenInstallDirectoryWasDeleted() throws {
+        let (bottle, dir) = try makeFixtureBottle()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let installDir = dir
+            .appending(path: "drive_c")
+            .appending(path: "Program Files (x86)")
+            .appending(path: "Steam")
+            .appending(path: "steamapps")
+            .appending(path: "common")
+            .appending(path: "Team Fortress 2")
+        try FileManager.default.removeItem(at: installDir)
+
+        XCTAssertEqual(SteamLibrary.discoverGames(in: bottle), [])
+    }
+
+    func testHidesGameWhenOnlyEmptyInstallDirectoryRemains() throws {
+        let (bottle, dir) = try makeFixtureBottle()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let executable = dir
+            .appending(path: "drive_c")
+            .appending(path: "Program Files (x86)")
+            .appending(path: "Steam")
+            .appending(path: "steamapps")
+            .appending(path: "common")
+            .appending(path: "Team Fortress 2")
+            .appending(path: "hl2.exe")
+        try FileManager.default.removeItem(at: executable)
+
+        XCTAssertEqual(SteamLibrary.discoverGames(in: bottle), [])
+    }
+
     func testResolvesCachedIconWhenPresent() throws {
         let (bottle, dir) = try makeFixtureBottle()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -105,7 +137,54 @@ final class SteamLibraryTests: XCTestCase {
 
         let games = SteamLibrary.discoverGames(in: bottle)
 
-        XCTAssertEqual(games.first?.iconURL, iconFile)
+        XCTAssertEqual(
+            games.first?.iconURL?.resolvingSymlinksInPath(),
+            iconFile.resolvingSymlinksInPath()
+        )
+    }
+
+    func testResolvesModernHashedIconWhenPresent() throws {
+        let (bottle, dir) = try makeFixtureBottle()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let appCache = dir
+            .appending(path: "drive_c")
+            .appending(path: "Program Files (x86)")
+            .appending(path: "Steam")
+            .appending(path: "appcache")
+            .appending(path: "librarycache")
+            .appending(path: "440")
+        try FileManager.default.createDirectory(at: appCache, withIntermediateDirectories: true)
+        let iconFile = appCache.appending(path: "f568912870a4684f9ec76277a1a404dda6bab213.jpg")
+        try Data().write(to: iconFile)
+        try Data().write(to: appCache.appending(path: "library_600x900.jpg"))
+
+        let games = SteamLibrary.discoverGames(in: bottle)
+
+        XCTAssertEqual(
+            games.first?.iconURL?.resolvingSymlinksInPath(),
+            iconFile.resolvingSymlinksInPath()
+        )
+    }
+
+    func testUsesModernCoverWhenHashedIconIsUnavailable() throws {
+        let (bottle, dir) = try makeFixtureBottle()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let appCache = dir
+            .appending(path: "drive_c")
+            .appending(path: "Program Files (x86)")
+            .appending(path: "Steam")
+            .appending(path: "appcache")
+            .appending(path: "librarycache")
+            .appending(path: "440")
+        try FileManager.default.createDirectory(at: appCache, withIntermediateDirectories: true)
+        let coverFile = appCache.appending(path: "library_600x900.jpg")
+        try Data().write(to: coverFile)
+
+        let games = SteamLibrary.discoverGames(in: bottle)
+
+        XCTAssertEqual(games.first?.iconURL, coverFile)
     }
 
     func testHidesSteamworksCommonRedistributables() throws {

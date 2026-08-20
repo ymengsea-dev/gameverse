@@ -90,14 +90,67 @@ public enum SteamLibrary {
               case let .string(installDirName)? = appState["installdir"] else { return nil }
 
         let installDir = steamappsDir.appending(path: "common").appending(path: installDirName)
-        let iconURL = steamRoot
-            .appending(path: "appcache")
-            .appending(path: "librarycache")
-            .appending(path: "\(appId)_icon.jpg")
-        let resolvedIconURL = FileManager.default.fileExists(
-            atPath: iconURL.path(percentEncoded: false)
-        ) ? iconURL : nil
+        guard isNonEmptyDirectory(installDir) else { return nil }
+        let resolvedIconURL = cachedArtworkURL(appId: appId, steamRoot: steamRoot)
 
         return SteamGame(appId: appId, name: name, installDir: installDir, iconURL: resolvedIconURL)
+    }
+
+    /// A manifest and artwork can remain after a game is manually deleted or
+    /// while Steam only has staged download data. Such entries are not
+    /// launchable and must not appear in the library or Storage tab.
+    private static func isNonEmptyDirectory(_ url: URL) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: url.path(percentEncoded: false),
+            isDirectory: &isDirectory
+        ), isDirectory.boolValue else { return false }
+
+        guard let contents = try? FileManager.default.contentsOfDirectory(
+            at: url,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return false }
+        return !contents.isEmpty
+    }
+
+    /// Steam has used two library-cache layouts. Current clients put an app's
+    /// hashed icon and artwork inside `librarycache/<appid>/`, while older
+    /// clients used the flat `<appid>_icon.jpg` filename.
+    private static func cachedArtworkURL(appId: Int, steamRoot: URL) -> URL? {
+        let cacheRoot = steamRoot
+            .appending(path: "appcache")
+            .appending(path: "librarycache")
+        let appCache = cacheRoot.appending(path: "\(appId)")
+
+        if let entries = try? FileManager.default.contentsOfDirectory(
+            at: appCache,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ), let hashedIcon = entries
+            .filter({ $0.isSteamHashedIcon })
+            .sorted(by: { $0.lastPathComponent < $1.lastPathComponent })
+            .first {
+            return hashedIcon
+        }
+
+        let fallbackCandidates = [
+            appCache.appending(path: "library_600x900.jpg"),
+            appCache.appending(path: "header.jpg"),
+            cacheRoot.appending(path: "\(appId)_icon.jpg")
+        ]
+        return fallbackCandidates.first {
+            FileManager.default.fileExists(atPath: $0.path(percentEncoded: false))
+        }
+    }
+}
+
+private extension URL {
+    var isSteamHashedIcon: Bool {
+        let supportedExtensions = ["jpg", "jpeg", "png"]
+        guard supportedExtensions.contains(pathExtension.lowercased()) else { return false }
+
+        let stem = deletingPathExtension().lastPathComponent
+        return stem.count == 40 && stem.allSatisfy(\.isHexDigit)
     }
 }
